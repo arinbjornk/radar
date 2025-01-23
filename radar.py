@@ -1,5 +1,6 @@
 import geopandas as gpd
 import numpy as np
+import random
 import sys
 import argparse
 from shapely.geometry import MultiPolygon, Polygon, LineString
@@ -116,7 +117,7 @@ def get_flight_track(callsign):
         
         if response.status_code == 200:
             track_data = response.json()
-            print(f"Got track data: {track_data}")  # Debug print
+            # print(f"Got track data: {track_data}")  # Debug print
             # Extract track points from the path array
             # Each point in path is [time, lat, lon, baro_altitude, true_track, on_ground]
             track_points = []
@@ -197,9 +198,8 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
             print(f"Error processing country {country['NAME']}: {e}")
             continue
 
-    # Get flights data and shuffle to show different flights each time
+    # Get flights data
     flights = get_all_flights((bbox[1], bbox[3], bbox[0], bbox[2]))
-    np.random.shuffle(flights)
     
     if target_callsign:
         # Get track for specific flight
@@ -292,6 +292,7 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
     else:
         # Filter flights to only those within bounding box
         filtered_flights = []
+        random.shuffle(flights)
         for flight in flights:
             if (bbox[0] <= flight['longitude'] <= bbox[2] and 
                 bbox[1] <= flight['latitude'] <= bbox[3]):
@@ -299,9 +300,10 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
                 if len(filtered_flights) >= 5:
                     break
                     
+        # Shuffle the filtered flights
         flights = filtered_flights  # Update main flights list
 
-        # Plot first 5 flights within bounding box
+        # Plot flights within bounding box in random order
         for flight in flights:
             x = int(((flight['longitude'] - bbox[0]) / 
                      (bbox[2] - bbox[0]) * width))
