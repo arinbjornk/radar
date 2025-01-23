@@ -4,10 +4,9 @@ import os
 import time
 from datetime import datetime
 
-def get_flights_in_region(bbox, username=None, password=None):
+def get_all_flights(username=None, password=None):
     """
-    Get flights within a bounding box with caching using OpenSky REST API
-    bbox: tuple of (min latitude, max latitude, min longitude, max longitude)
+    Get all flights with caching using OpenSky REST API
     Returns: list of processed flight data with necessary plotting info
     """
     cache_file = 'flight_cache.json'
@@ -24,18 +23,12 @@ def get_flights_in_region(bbox, username=None, password=None):
     
     # If no cache or cache is stale, fetch new data
     try:
-        # Prepare API URL with bounding box parameters
+        # Prepare API URL
         base_url = "https://opensky-network.org/api/states/all"
-        params = {
-            'lamin': bbox[0],  # min latitude
-            'lamax': bbox[1],  # max latitude
-            'lomin': bbox[2],  # min longitude
-            'lomax': bbox[3],  # max longitude
-        }
         
         # Make API request (with auth if provided)
         auth = (username, password) if username and password else None
-        response = requests.get(base_url, params=params, auth=auth)
+        response = requests.get(base_url, auth=auth)
         response.raise_for_status()
         
         data = response.json()
@@ -85,14 +78,11 @@ def get_flights_in_region(bbox, username=None, password=None):
 
 # Example usage:
 if __name__ == "__main__":
-    # Example bounding box for Switzerland
-    switzerland_bbox = (45.8389, 47.8229, 5.9962, 10.5226)
-    
-    # You can use it anonymously (rate limited)
-    flights = get_flights_in_region(switzerland_bbox)
+    # Get all flights
+    flights = get_all_flights()
     
     # Or with authentication for better rate limits
-    # flights = get_flights_in_region(switzerland_bbox, username="your_username", password="your_password")
+    # flights = get_all_flights(username="your_username", password="your_password")
     
     # Print some sample data
     for flight in flights[:5]:  # First 5 flights

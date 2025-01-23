@@ -1,8 +1,9 @@
 import geopandas as gpd
 import numpy as np
 import sys
+import argparse
 from shapely.geometry import MultiPolygon, Polygon, LineString
-from flights import get_flights_in_region
+from flights import get_all_flights
 from datetime import datetime, timedelta
 import requests
 
@@ -90,7 +91,7 @@ def get_flight_track(callsign):
     Get the track of a specific flight using OpenSky API
     """
     # Get current flight data to find the aircraft's ICAO24
-    flights = get_flights_in_region((35, 71, -25, 45))  # Europe bbox
+    flights = get_all_flights((35, 71, -25, 45))  # Europe bbox
     target_flight = None
     for flight in flights:
         if flight['callsign'].strip() == callsign.strip():
@@ -138,22 +139,41 @@ def get_flight_track(callsign):
         print(f"Error getting flight track: {e}")
         return [(target_flight['longitude'], target_flight['latitude'])], target_flight
 
-def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', target_callsign=None):
+def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', target_callsign=None, region='europe', info=False):
     """
     Creates an ASCII map with flights plotted on top
     If target_callsign is provided, shows only that flight with its track
+    
+    Args:
+        width (int): Width of the map in characters
+        height (int): Height of the map in characters
+        map_chars (str): Characters to use for the map
+        flight_char (str): Character to use for flights
+        target_callsign (str): Callsign of a specific flight to track
+        region (str): Region to display (europe, north_america, south_america, 
+                     asia, africa, australia, antarctica)
     """
-    europe_bbox = (-25, 35, 45, 71)
+    # Bounding boxes for different regions (min_lon, min_lat, max_lon, max_lat)
+    REGION_BBOXES = {
+        'europe': (-25, 35, 45, 71),
+        'north_america': (-168, 5, -52, 83),
+        'south_america': (-92, -56, -32, 13),
+        'asia': (26, -11, 190, 81),
+        'africa': (-26, -35, 60, 38),
+        'australia': (112, -55, 180, -10),
+        'antarctica': (-180, -90, 180, -60)
+    }
+    bbox = REGION_BBOXES.get(region, REGION_BBOXES['europe'])
     canvas = [[map_chars[0] for _ in range(width)] for _ in range(height)]
     
     # Load and plot the map
     url = "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip"
     world = gpd.read_file(url)
-    world = world.cx[europe_bbox[0]:europe_bbox[2], europe_bbox[1]:europe_bbox[3]]
+    world = world.cx[bbox[0]:bbox[2], bbox[1]:bbox[3]]
     
     def plot_coords(coords):
-        x_coords = ((coords[:, 0] - europe_bbox[0]) / (europe_bbox[2] - europe_bbox[0]) * width).astype(int)
-        y_coords = ((europe_bbox[3] - coords[:, 1]) / (europe_bbox[3] - europe_bbox[1]) * height).astype(int)
+        x_coords = ((coords[:, 0] - bbox[0]) / (bbox[2] - bbox[0]) * width).astype(int)
+        y_coords = ((bbox[3] - coords[:, 1]) / (bbox[3] - bbox[1]) * height).astype(int)
         
         for x, y in zip(x_coords, y_coords):
             if 0 <= x < width and 0 <= y < height:
@@ -177,8 +197,9 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
             print(f"Error processing country {country['NAME']}: {e}")
             continue
 
-    # Get flights data
-    flights = get_flights_in_region((europe_bbox[1], europe_bbox[3], europe_bbox[0], europe_bbox[2]))
+    # Get flights data and shuffle to show different flights each time
+    flights = get_all_flights((bbox[1], bbox[3], bbox[0], bbox[2]))
+    np.random.shuffle(flights)
     
     if target_callsign:
         # Get track for specific flight
@@ -191,15 +212,15 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
             
             # Draw track line by line
             for i in range(len(track_points)-1):
-                x1 = int(((track_points[i][0] - europe_bbox[0]) / 
-                        (europe_bbox[2] - europe_bbox[0]) * width))
-                y1 = int(((europe_bbox[3] - track_points[i][1]) / 
-                        (europe_bbox[3] - europe_bbox[1]) * height))
+                x1 = int(((track_points[i][0] - bbox[0]) / 
+                        (bbox[2] - bbox[0]) * width))
+                y1 = int(((bbox[3] - track_points[i][1]) / 
+                        (bbox[3] - bbox[1]) * height))
                 
-                x2 = int(((track_points[i+1][0] - europe_bbox[0]) / 
-                        (europe_bbox[2] - europe_bbox[0]) * width))
-                y2 = int(((europe_bbox[3] - track_points[i+1][1]) / 
-                        (europe_bbox[3] - europe_bbox[1]) * height))
+                x2 = int(((track_points[i+1][0] - bbox[0]) / 
+                        (bbox[2] - bbox[0]) * width))
+                y2 = int(((bbox[3] - track_points[i+1][1]) / 
+                        (bbox[3] - bbox[1]) * height))
                 
                 if (0 <= x1 < width and 0 <= y1 < height and 
                     0 <= x2 < width and 0 <= y2 < height):
@@ -209,31 +230,31 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
                     
             # Draw final point of track
             if track_points:
-                x = int(((track_points[-1][0] - europe_bbox[0]) / 
-                        (europe_bbox[2] - europe_bbox[0]) * width))
-                y = int(((europe_bbox[3] - track_points[-1][1]) / 
-                        (europe_bbox[3] - europe_bbox[1]) * height))
+                x = int(((track_points[-1][0] - bbox[0]) / 
+                        (bbox[2] - bbox[0]) * width))
+                y = int(((bbox[3] - track_points[-1][1]) / 
+                        (bbox[3] - bbox[1]) * height))
                 if 0 <= x < width and 0 <= y < height:
                     canvas[y][x] = f"{BLUE}•{RESET}"  # Mark end of track
-                x1 = int(((track_points[i][0] - europe_bbox[0]) / 
-                         (europe_bbox[2] - europe_bbox[0]) * width))
-                y1 = int(((europe_bbox[3] - track_points[i][1]) / 
-                         (europe_bbox[3] - europe_bbox[1]) * height))
+                x1 = int(((track_points[i][0] - bbox[0]) / 
+                         (bbox[2] - bbox[0]) * width))
+                y1 = int(((bbox[3] - track_points[i][1]) / 
+                         (bbox[3] - bbox[1]) * height))
                 
-                x2 = int(((track_points[i+1][0] - europe_bbox[0]) / 
-                         (europe_bbox[2] - europe_bbox[0]) * width))
-                y2 = int(((europe_bbox[3] - track_points[i+1][1]) / 
-                         (europe_bbox[3] - europe_bbox[1]) * height))
+                x2 = int(((track_points[i+1][0] - bbox[0]) / 
+                         (bbox[2] - bbox[0]) * width))
+                y2 = int(((bbox[3] - track_points[i+1][1]) / 
+                         (bbox[3] - bbox[1]) * height))
                 
                 if 0 <= x1 < width and 0 <= y1 < height:
                     line_char = get_direction_char(x1, y1, x2, y2)
                     canvas[y1][x1] = f"{BLUE}{line_char}{RESET}"  # Blue line for track
             
             # Plot current position with direction
-            x = int(((target_flight['longitude'] - europe_bbox[0]) / 
-                     (europe_bbox[2] - europe_bbox[0]) * width))
-            y = int(((europe_bbox[3] - target_flight['latitude']) / 
-                     (europe_bbox[3] - europe_bbox[1]) * height))
+            x = int(((target_flight['longitude'] - bbox[0]) / 
+                     (bbox[2] - bbox[0]) * width))
+            y = int(((bbox[3] - target_flight['latitude']) / 
+                     (bbox[3] - bbox[1]) * height))
             
             if 0 <= x < width and 0 <= y < height:
                 if target_flight['heading'] is not None:
@@ -259,20 +280,33 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
                 else:
                     flight_symbol = AIRCRAFT_CHARS['E']  # Default direction
                 
-                canvas[y][x] = f"{GREEN}{flight_symbol}{RESET}"  # Green for current position
+                if info:
+                    canvas[y][x] = f"{GREEN}{flight_symbol}{RESET} {YELLOW}{flight['callsign']}{RESET}"
+                else:
+                    canvas[y][x] = f"{GREEN}{flight_symbol}{RESET}"  # Green for current position
             
             flights = [target_flight]  # Only show info for target flight
         else:
             print(f"Flight {target_callsign} not found")
             flights = []
     else:
-        # Original behavior: plot first 5 flights
-        flights = flights[:5]
+        # Filter flights to only those within bounding box
+        filtered_flights = []
         for flight in flights:
-            x = int(((flight['longitude'] - europe_bbox[0]) / 
-                     (europe_bbox[2] - europe_bbox[0]) * width))
-            y = int(((europe_bbox[3] - flight['latitude']) / 
-                     (europe_bbox[3] - europe_bbox[1]) * height))
+            if (bbox[0] <= flight['longitude'] <= bbox[2] and 
+                bbox[1] <= flight['latitude'] <= bbox[3]):
+                filtered_flights.append(flight)
+                if len(filtered_flights) >= 5:
+                    break
+                    
+        flights = filtered_flights  # Update main flights list
+
+        # Plot first 5 flights within bounding box
+        for flight in flights:
+            x = int(((flight['longitude'] - bbox[0]) / 
+                     (bbox[2] - bbox[0]) * width))
+            y = int(((bbox[3] - flight['latitude']) / 
+                     (bbox[3] - bbox[1]) * height))
             
             if 0 <= x < width and 0 <= y < height:
                 if flight['heading'] is not None:
@@ -282,7 +316,10 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
                 else:
                     flight_symbol = flight_char
                     
-                canvas[y][x] = f"{GREEN}{flight_symbol}{RESET}"  # Green for current position
+                if info:
+                    canvas[y][x] = f"{GREEN}{flight_symbol}{RESET} {YELLOW}{flight['callsign']}{RESET}"
+                else:
+                    canvas[y][x] = f"{GREEN}{flight_symbol}{RESET}"  # Green for current position
 
     # Convert canvas to string
     map_str = '\n'.join([''.join(row) for row in canvas])
@@ -317,6 +354,32 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
     return map_str + flight_info
 
 if __name__ == "__main__":
-    target_callsign = sys.argv[1] if len(sys.argv) > 1 else None
-    radar_display = plot_radar_map(target_callsign=target_callsign)
+    parser = argparse.ArgumentParser(
+        description="Display a real-time radar map of flights",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        '-c', '--callsign',
+        help="Callsign of a specific flight to track (e.g. SWA123)"
+    )
+    parser.add_argument(
+        '-r', '--region',
+        default='europe',
+        help="""Region to display. Options:
+    europe (default)
+    north_america
+    south_america
+    asia
+    africa
+    australia
+    antarctica"""
+    )
+    parser.add_argument(
+        '-i', '--info',
+        action='store_true',
+        help="Show callsigns next to aircraft markers"
+    )
+    
+    args = parser.parse_args()
+    radar_display = plot_radar_map(target_callsign=args.callsign, region=args.region, info=args.info)
     print(radar_display)
