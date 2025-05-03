@@ -19,16 +19,17 @@ YELLOW = '\033[38;5;227m'   # Warm yellow (alternative highlight)
 
 # Improved map and aircraft characters
 MAP_CHAR = '·'         # Lighter character for map
-AIRCRAFT_CHARS = {     # More prominent aircraft symbols
-    'N': '▲',
-    'NE': '▲',
-    'E': '▶',
-    'SE': '▼',
-    'S': '▼',
-    'SW': '▼',
-    'W': '◀',
-    'NW': '▲'
+AIRCRAFT_CHARS = {
+    'N':  '↑',
+    'NE': '↗',
+    'E':  '→',
+    'SE': '↘',
+    'S':  '↓',
+    'SW': '↙',
+    'W':  '←',
+    'NW': '↖'
 }
+CARDINAL_ARROWS = '↑↗→↘↓↙←↖'
 
 def smooth_track(points, min_distance=0.1):
     """
@@ -104,37 +105,34 @@ def get_flight_track(callsign):
 
     # Get historical track data
     try:
-        # Make request to OpenSky tracks API
-        url = f"https://opensky-network.org/api/tracks/all"
-        params = {
-            "icao24": target_flight['icao24'],
-            "time": 0  # 0 means get the current/latest track
-        }
-        
-        # If you have OpenSky credentials, use them like this:
-        # response = requests.get(url, params=params, auth=('username', 'password'))
-        response = requests.get(url, params=params)
-        
-        if response.status_code == 200:
-            track_data = response.json()
-            # print(f"Got track data: {track_data}")  # Debug print
-            # Extract track points from the path array
-            # Each point in path is [time, lat, lon, baro_altitude, true_track, on_ground]
-            track_points = []
-            if 'path' in track_data:
-                track_points = [(point[2], point[1]) for point in track_data['path'] 
-                              if point[1] is not None and point[2] is not None]
-                print(f"Extracted {len(track_points)} track points")  # Debug print
-            else:
-                print("No path data in response")
-                
-            if not track_points:  # If no track points, at least show current position
-                track_points = [(target_flight['longitude'], target_flight['latitude'])]
-            return track_points, target_flight
-        else:
+        # Make request to OpenSky tracks API with retry on rate limit
+        url = "https://opensky-network.org/api/tracks/all"
+        params = {"icao24": target_flight['icao24'], "time": 0}
+        track_data = None
+        for attempt in range(3):
+            response = requests.get(url, params=params, timeout=15)
+            if response.status_code == 200:
+                track_data = response.json()
+                break
+            if response.status_code == 429:
+                wait = 2 ** attempt
+                print(f"Rate limited (429), retrying in {wait}s")
+                import time
+                time.sleep(wait)
+                continue
             print(f"Error getting track data: {response.status_code}")
-            # If we can't get the track, at least return the current position
+            break
+
+        if not track_data:
+            # Fallback to current position if unable to fetch track
             return [(target_flight['longitude'], target_flight['latitude'])], target_flight
+
+        # Extract track points from the path array
+        path = track_data.get('path', [])
+        track_points = [(pt[2], pt[1]) for pt in path if pt[1] is not None and pt[2] is not None]
+        if not track_points:
+            track_points = [(target_flight['longitude'], target_flight['latitude'])]
+        return track_points, target_flight
             
     except Exception as e:
         print(f"Error getting flight track: {e}")
@@ -236,19 +234,6 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
                         (bbox[3] - bbox[1]) * height))
                 if 0 <= x < width and 0 <= y < height:
                     canvas[y][x] = f"{BLUE}•{RESET}"  # Mark end of track
-                x1 = int(((track_points[i][0] - bbox[0]) / 
-                         (bbox[2] - bbox[0]) * width))
-                y1 = int(((bbox[3] - track_points[i][1]) / 
-                         (bbox[3] - bbox[1]) * height))
-                
-                x2 = int(((track_points[i+1][0] - bbox[0]) / 
-                         (bbox[2] - bbox[0]) * width))
-                y2 = int(((bbox[3] - track_points[i+1][1]) / 
-                         (bbox[3] - bbox[1]) * height))
-                
-                if 0 <= x1 < width and 0 <= y1 < height:
-                    line_char = get_direction_char(x1, y1, x2, y2)
-                    canvas[y1][x1] = f"{BLUE}{line_char}{RESET}"  # Blue line for track
             
             # Plot current position with direction
             x = int(((target_flight['longitude'] - bbox[0]) / 
@@ -258,24 +243,15 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
             
             if 0 <= x < width and 0 <= y < height:
                 if target_flight['heading'] is not None:
-                    # Convert heading to cardinal direction
+                    # Convert heading to cardinal direction (corrected mapping)
                     heading = target_flight['heading']
-                    if heading < 22.5 or heading >= 337.5:
-                        direction = 'E'
-                    elif heading < 67.5:
-                        direction = 'NE'
-                    elif heading < 112.5:
-                        direction = 'N'
-                    elif heading < 157.5:
-                        direction = 'NW'
-                    elif heading < 202.5:
-                        direction = 'W'
-                    elif heading < 247.5:
-                        direction = 'SW'
-                    elif heading < 292.5:
-                        direction = 'S'
-                    else:
-                        direction = 'SE'
+                    dirs = ['N','NE','E','SE','S','SW','W','NW']
+                    idx  = int(((heading + 22.5) % 360) / 45)
+                    direction = dirs[idx]
+                    flight_symbol = {
+                        'N': '↑','NE': '↗','E': '→','SE': '↘',
+                        'S': '↓','SW': '↙','W': '←','NW': '↖'
+                    }[direction]
                     flight_symbol = AIRCRAFT_CHARS[direction]
                 else:
                     flight_symbol = AIRCRAFT_CHARS['E']  # Default direction
@@ -315,6 +291,8 @@ def plot_radar_map(width=120, height=40, map_chars=' x', flight_char='✈', targ
                     direction_chars = ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘']
                     direction_idx = int(((flight['heading'] + 22.5) % 360) / 45)
                     flight_symbol = direction_chars[direction_idx]
+                    idx = int(((flight['heading'] + 22.5) % 360) / 45)
+                    flight_symbol = CARDINAL_ARROWS[idx]
                 else:
                     flight_symbol = flight_char
                     
