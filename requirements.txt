@@ -1,0 +1,8 @@
+# Textual TUI framework
+textual
+
+# Existing dependencies for radar functionality
+geopandas
+numpy
+requests
+shapely
