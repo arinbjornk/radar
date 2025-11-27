@@ -117,11 +117,11 @@ class RadarApp(App):
 
         # Update radar display region
         radar_display = self.query_one("#radar-display", RadarDisplayWidget)
-        radar_display.region = new_region
+        radar_display.map_region = new_region
 
         # Update flight info region
         flight_info = self.query_one("#flight-info", FlightInfoWidget)
-        flight_info.region = new_region
+        flight_info.map_region = new_region
 
         # Update status bar
         status_bar = self.query_one("#status-bar", StatusBar)

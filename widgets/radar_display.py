@@ -6,7 +6,7 @@ from rich.text import Text
 class RadarDisplayWidget(Static):
     """Widget for displaying the radar map with flights"""
 
-    region = reactive('europe')
+    map_region = reactive('europe')
     tracked_flight = reactive(None)
 
     def __init__(self, **kwargs):
@@ -16,7 +16,7 @@ class RadarDisplayWidget(Static):
         """Called when widget is mounted"""
         self.refresh_radar()
 
-    def watch_region(self, new_region: str):
+    def watch_map_region(self, new_region: str):
         """Called when region changes"""
         self.refresh_radar()
 
@@ -29,7 +29,7 @@ class RadarDisplayWidget(Static):
         # Simplified radar display for now
         content = Text()
         content.append("=" * 50 + "\n", style="white")
-        content.append(f"RADAR DISPLAY - {self.region.upper()}\n", style="bold green")
+        content.append(f"RADAR DISPLAY - {self.map_region.upper()}\n", style="bold green")
         content.append("=" * 50 + "\n", style="white")
         content.append("\n")
 

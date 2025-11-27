@@ -6,7 +6,7 @@ from rich.text import Text
 class FlightInfoWidget(Static):
     """Widget for displaying flight information"""
 
-    region = reactive('europe')
+    map_region = reactive('europe')
     tracked_flight = reactive(None)
 
     def __init__(self, **kwargs):
@@ -16,7 +16,7 @@ class FlightInfoWidget(Static):
         """Called when widget is mounted"""
         self.refresh_flight_info()
 
-    def watch_region(self, new_region: str):
+    def watch_map_region(self, new_region: str):
         """Called when region changes"""
         self.refresh_flight_info()
 
@@ -34,7 +34,7 @@ class FlightInfoWidget(Static):
         if self.tracked_flight:
             content.append(f"Tracking:\n{self.tracked_flight}\n", style="yellow")
         else:
-            content.append(f"Region: {self.region.title()}\n", style="green")
+            content.append(f"Region: {self.map_region.title()}\n", style="green")
 
         content.append("\nFlight data will\nbe displayed here...\n", style="dim")
 
